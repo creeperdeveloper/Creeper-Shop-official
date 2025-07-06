@@ -328,6 +328,17 @@
             background: rgba(79, 172, 254, 0.1);
         }
 
+        .payment-display {
+            background: var(--bg-secondary);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4facfe;
+            text-align: center;
+        }
+
         .confirmation-modal {
             position: fixed;
             top: 0;
@@ -481,8 +492,15 @@
                 
                 <div class="form-group">
                     <label for="quantity">数量</label>
-                    <input type="number" id="quantity" class="form-control" placeholder="数量を入力" min="1" required>
+                    <input type="number" id="quantity" class="form-control" placeholder="数量を入力" min="1" required onchange="updateTotalPrice()" oninput="updateTotalPrice()">
                     <small style="color: var(--text-secondary);">最大: <span id="max-quantity">0</span>個</small>
+                </div>
+
+                <div class="form-group">
+                    <label>支払い金額</label>
+                    <div class="payment-display" id="payment-display">
+                        1個 = 選択してください
+                    </div>
                 </div>
                 
                 <div class="form-group">
@@ -680,7 +698,7 @@
                         </div>
                         ${description}
                         <div class="product-price">
-                            <i class="fas fa-coins"></i> ${item.nedann}
+                            <i class="fas fa-coins"></i> 1個 = ${item.nedann}
                         </div>
                     </div>
                 `;
@@ -728,14 +746,14 @@
                     : '';
                 
                 return `
-                    <div class="product-card" onclick="selectProduct('${item.name}', ${item.kosuu}, '${item.nedann}')">
+                    <div class="product-card" onclick="selectProduct('${item.name}', ${item.kosuu}, '${item.nedann}', ${item.price_per_unit})">
                         <div class="product-name">${item.name}</div>
                         <div class="product-stock">
                             <i class="fas fa-boxes"></i> 在庫数: ${item.kosuu}個
                         </div>
                         ${description}
                         <div class="product-price">
-                            <i class="fas fa-coins"></i> ${item.nedann}
+                            <i class="fas fa-coins"></i> 1個 = ${item.nedann}
                         </div>
                     </div>
                 `;
@@ -745,12 +763,30 @@
         }
 
         // 商品選択
-        function selectProduct(name, stock, price) {
-            selectedProduct = { name, stock, price };
+        function selectProduct(name, stock, price, pricePerUnit) {
+            selectedProduct = { name, stock, price, pricePerUnit };
             document.getElementById('max-quantity').textContent = stock;
             document.getElementById('quantity').max = stock;
             document.getElementById('quantity').value = 1;
+            updateTotalPrice(); // 初期価格を計算
             showOrderForm();
+        }
+
+        // 合計金額を計算・表示
+        function updateTotalPrice() {
+            const quantity = parseInt(document.getElementById('quantity').value) || 0;
+            if (selectedProduct && quantity > 0) {
+                const totalPrice = selectedProduct.pricePerUnit * quantity;
+                const paymentText = selectedProduct.price.includes('金インゴット') 
+                    ? `${totalPrice}金インゴット` 
+                    : `${totalPrice}${selectedProduct.price.replace(/^\d+/, '')}`;
+                
+                // 支払い金額表示エリアを更新
+                const paymentDisplay = document.getElementById('payment-display');
+                if (paymentDisplay) {
+                    paymentDisplay.textContent = paymentText;
+                }
+            }
         }
 
         // 注文フォーム表示
@@ -792,13 +828,17 @@
             }
 
             const deliveryText = selectedDeliveryType === 'delivery' ? '配送' : '受け取り';
+            const totalPrice = selectedProduct.pricePerUnit * parseInt(quantity);
+            const paymentText = selectedProduct.price.includes('金インゴット') 
+                ? `${totalPrice}金インゴット` 
+                : `${totalPrice}${selectedProduct.price.replace(/^\d+/, '')}`;
             
             const confirmationHtml = `
                 <div style="color: var(--text-primary);">
                     <p><strong>Minecraft ID:</strong> ${minecraftId}</p>
                     <p><strong>商品名:</strong> ${selectedProduct.name}</p>
                     <p><strong>数量:</strong> ${quantity}個</p>
-                    <p><strong>支払い方法:</strong> ${selectedProduct.price}</p>
+                    <p><strong>支払い金額:</strong> ${paymentText}</p>
                     <p><strong>配送方法:</strong> ${deliveryText}</p>
                     ${notes ? `<p><strong>備考:</strong> ${notes}</p>` : ''}
                 </div>
@@ -825,7 +865,6 @@
                 minecraft_id: minecraftId,
                 item_name: selectedProduct.name,
                 quantity: quantity,
-                payment: selectedProduct.price,
                 delivery_type: selectedDeliveryType,
                 notes: notes
             };
@@ -851,13 +890,21 @@
                 document.getElementById('order-result').innerHTML = `
                     <div class="success">
                         <i class="fas fa-check-circle"></i> 
-                        注文が正常に送信されました！注文ID: ${result.order_id || 'N/A'}
+                        注文が正常に送信されました！<br>
+                        注文ID: ${result.order_id || 'N/A'}<br>
+                        支払い金額: ${result.total_payment}<br>
+                        残り在庫: ${result.remaining_stock}個
                     </div>
                 `;
+                
+                // 在庫を更新
+                loadInventory();
+                loadProductsForOrder();
                 
                 // フォームをリセット
                 document.getElementById('quantity').value = '';
                 document.getElementById('notes').value = '';
+                document.getElementById('payment-display').textContent = '1個 = 選択してください';
                 selectedProduct = null;
                 selectedDeliveryType = null;
                 document.querySelectorAll('.delivery-option').forEach(option => {
